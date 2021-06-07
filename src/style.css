@@ -1,0 +1,31 @@
+bodu{
+    position: relative;
+}
+
+.left{
+    position: absolute;
+    left: 0;
+    width: 600px;
+}
+
+.right{
+    position: absolute;
+    left: 600px;
+    width: 300px;
+}
+
+.job_detail{
+    width: 600px;
+    height: 600px;
+}
+
+.jobs{
+    width: 300px;
+    height: 300px;
+}
+
+.changes{
+    width: 300px;
+    height: 300px;
+}
+
