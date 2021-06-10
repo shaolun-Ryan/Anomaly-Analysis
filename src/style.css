@@ -1,4 +1,4 @@
-bodu{
+body{
     position: relative;
 }
 
@@ -15,14 +15,15 @@ bodu{
 }
 
 .job_detail{
+    width: 300px;
+    height: 300px;
+}
+
+.jobs{
     width: 600px;
     height: 600px;
 }
 
-.jobs{
-    width: 300px;
-    height: 300px;
-}
 
 .changes{
     width: 300px;
