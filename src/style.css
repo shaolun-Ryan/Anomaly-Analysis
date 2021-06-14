@@ -1,4 +1,5 @@
 body{
+    padding: 10px;
     position: relative;
 }
 
@@ -6,6 +7,7 @@ body{
     position: absolute;
     left: 0;
     width: 600px;
+    margin-left: 10px;
 }
 
 .right{
@@ -28,12 +30,12 @@ body{
 
 
 .changes{
-    width: 300px;
+    width: 350px;
     height: 300px;
     border: solid 1px #4e525b;
     border-bottom: solid 2px #4e525b;
     border-radius: 3px;
-
+    padding: 10px;
 }
 
 .load-change{
@@ -41,3 +43,25 @@ body{
     border-radius: 3px;
 }
 
+.nav-tabs li{
+    font-size: 0.4em;
+}
+
+.nav-tabs li a{
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-family: "Microsoft PhagsPa";
+    font-size: 1.5em;
+}
+
+.start-annotation line{
+    stroke: #6fff93;
+    stroke-width: 1px;
+}
+
+.end-annotation line{
+    stroke: #ff6b66;
+    stroke-width: 0.1px;
+}

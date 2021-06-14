@@ -16,7 +16,8 @@ class Views extends Component {
             raw_data: [],
             stratify: [],
             time: 39600,
-            time_data : []//该时刻下所有拼合好的node数据
+            time_data : [],//该时刻下所有拼合好的node数据
+            line_chart_data:{}//用来实现点击node刷新line chart的数据
         }
 
     }
@@ -39,6 +40,8 @@ class Views extends Component {
                 load_5: +d[8] || 0,
                 load_15: +d[9] || 0,
                 radius:2,
+                start_time: +d[10]||null,
+                end_time: +d[11]||null,
             }
         })
 
@@ -160,6 +163,9 @@ class Views extends Component {
 
     /*画图函数*/
     draw=(root)=>{
+
+        let _this = this
+
         d3.select('.jobs').selectAll('*').remove()
 
 
@@ -167,14 +173,16 @@ class Views extends Component {
         let height = this.state.height
         let stratify = this.state.stratify
 
+        let margin = {left:20,right:20,top:20,bottom:20}
+
 
         let data = d3.pack()
-            .size([width, height])
+            .size([width-margin.left-margin.right, height-margin.top-margin.bottom])
             .padding(2)
             // .radius(d=>d.data.data.real_cpu_max)
             (root)
 
-        console.log('pack',data)
+        console.log('pack '+this.state.time,data)
 
         /*设置颜色插值器*/
         function colorNode(d){
@@ -214,9 +222,9 @@ class Views extends Component {
             .attr("fill", d => d.children ? color(d.depth) : colorNode(d.data.data.util_disk))
             .attr("r", d => d.r)
             .on('click',function (d){
+                _this.update_temporal_line_chart(d)
                 update_load_change_view(d)
                 // update_metrics_bubble_chart(d, stratify)
-                update_temporal_line_chart(d)
             })
         node.append('title')
             .text(d=>d.children?`job_${d.data.data.name}`:`machine_${d.data.data.machineID}`)
@@ -235,7 +243,6 @@ class Views extends Component {
             .on('click',function (d){
                 update_load_change_view(d)
                 // update_metrics_bubble_chart(d, stratify)
-                update_temporal_line_chart(d)
             })
         node.append('title')
             .text(d=>`machine_${d.data.data.machineID}`)
@@ -254,7 +261,6 @@ class Views extends Component {
             .on('click',function (d){
                 update_load_change_view(d)
                 // update_metrics_bubble_chart(d, stratify)
-                update_temporal_line_chart(d)
             })
             .on('mouseover',function(d){
                 trigger_same_class_node(this)
@@ -330,7 +336,6 @@ class Views extends Component {
             const self = this
 
             if(data.children){
-                throw 'Click child nodes instead of parent nodes'
                 return
             }
 
@@ -428,12 +433,106 @@ class Views extends Component {
 
         }
 
-        let update_temporal_line_chart=(d)=>{
+
+
+    }
+
+
+
+    /*切换时戳触发*/
+    once_change_timestamp=()=>{
+
+
+        let promise = new Promise((resolve, reject)=>{
+
+            let timestamp = document.getElementById('select_timestamp').value
+            this.setState({
+                time: +timestamp
+            })
+
+            resolve()
+        })
+
+        promise
+            .then(()=>{
+                let _data = this.preprocess(this.state.raw_data)
+                let time_data = this.format(_data)
+                this.setState({
+                    time_data: time_data
+                })
+            })
+            .then(()=>{
+
+            this.draw(this.state.time_data)
+        })
+
+    }
+
+
+    update_temporal_line_chart=(d)=>{
+        console.log(d)
+        if(!d.children){
+            return
+        }
+
+        let _this = this
+        let job_name = d.parent.data.data.name==='root'?d.data.data.name : d.data.data.parent
+        let metric = document.getElementById('select_metric').value
+
+        this.handle_data_for_line_chart(d)//用来获得line chart的数据到state中，函数中没有返回值，直接setState()
+
+        let data = this.state.line_chart_data//用来获得line chart的数据
+
+        let start_time_arr = [], end_time_arr = []//用来获得在line chart中做竖直线标记的数据
+
+        this.state.stratify.children.forEach(d=>{
+            if(d.data.name==job_name){
+                d.children.forEach(d_=>{
+                    d_.children.forEach(item=>{
+                        start_time_arr.push(item.data.start_time)
+                        end_time_arr.push(item.data.end_time)
+                    })
+                })
+            }
+        })
+
+
+        if(Object.keys(data).length===0){
+            return
+        }
+
+        /*对data的每一个value里的值按时戳排序*/
+        for(let key in data){
+            data[key].sort((a,b)=>{
+                return a.timestamp-b.timestamp
+            })
+        }
+
+        // console.log(data)
+
+        /*data是whole range的数据，scope是zoom-in的数据*/
+        let min_start = d3.min(start_time_arr), max_end = d3.max(end_time_arr)
+        let scope_start = d3.max([39600,11*min_start-10*max_end])
+        let scope_end = d3.min([48300, 11*max_end-10*min_start])
+        let scope = [scope_start, scope_end]
+
+        /*根据scope的范围筛选data*/
+        let scope_data = {};
+        for(let key in data){
+            scope_data[key] = data[key].filter(d=>{
+                return d.timestamp>=scope_start && d.timestamp<=scope_end
+            })
+        }
+        // console.log('scope_data',scope_data)
+
+        /*如果模式是scope的话就执行函数*/
+        if(document.getElementById('select_if_scope').value==='scope'){
+            /*开始作图*/
             d3.select('.metrics-bar-container').selectAll('*').remove()
 
             let margin={left:25, right:10, top:10, bottom:20}
 
-            let widthSvg = 300, heightSvg = 200
+            let widthSvg = 320, heightSvg = 220
             let widthChart = 300-margin.left-margin.right, heightChart = 200-margin.top-margin.bottom
 
             let svg = d3.select('.metrics-bar-container')
@@ -446,102 +545,197 @@ class Views extends Component {
 
             /*绘制x轴*/
             let x = d3.scaleLinear()
-                .domain([1,10])
+                .domain([scope_start,scope_end])
                 .range([0,widthChart])
             svg.append('g')
-                .style('font-size','0.5em')
+                .style('font-size','0.8em')
                 .attr('transform', `translate(0,${heightChart})`)
-                .call(d3.axisBottom(x))
+                .call(d3.axisBottom(x).tickValues([scope_start,scope_end]))
+
+            /*绘制annotation用来标记instance生成的时间*/
+            svg.append('g')
+                .attr('class','start-annotation')
+                .attr('transform', `translate(0,${heightChart})`)
+                .call(d3.axisBottom(x).tickValues(start_time_arr).tickSize(-200).tickFormat(''))
+
+            svg.append('g')
+                .attr('class','end-annotation')
+                .attr('transform', `translate(0,${heightChart})`)
+                .call(d3.axisBottom(x).tickValues(end_time_arr).tickSize(-200).tickFormat(''))
 
             /*绘制y轴*/
             let y = d3.scaleLinear()
-                .domain([1,100])
+                .domain([0,100])
                 .range([heightChart,0])
             svg.append('g')
                 .style('font-size','0.5em')
                 .call(d3.axisLeft(y))
 
-            let sample = d3.range(10).map(d=>{
-                return {
-                    time:d+1,
-                    value:Math.random()*100
-                }
-            })
-            // console.log(sample)
 
             /*绘制曲线Line*/
-            svg.append("path")
-                .datum(handle_data_for_line_chart(d))
+            svg.selectAll(".line")
+                .data(Object.values(scope_data))
+                .enter()
+                .append('path')
                 .attr("fill", "none")
                 .attr("stroke", "steelblue")
-                .attr("stroke-width", 1.5)
-                .attr("d", d3.line()
-                    .x(function(d) { return x(d.time) })
-                    .y(function(d) { return y(d.value) })
-                    .curve(d3.curveMonotoneX)//使连线平滑
+                .attr("stroke-width", 0.5)
+                .attr("d", function(d){
+                        return d3.line()
+                            .x(function(d) { return x(+d.timestamp)})
+                            .y(function(d) { return y(+d[`util_${metric}`]) })
+                            .curve(d3.curveMonotoneX)//使连线平滑
+                            (d)
+                    }
                 )
 
-
-            /*构造生成数据的处理函数*/
-            function handle_data_for_line_chart(d){
-
-                let job_name = d.data.data.job_id
-                let node_arr = []//用来储存所有当前timstamp下该job下所有 的nodes
-
-                stratify.children.forEach(item=>{
-                    if(item.id==job_name){
-                        item.children.forEach(item_=>{
-                            item_.children.forEach(item__=>{
-                                node_arr.push(item__.id)
-                            })
-                        })
-                    }
-                })
-
-                /*Here*/
-
-
-                let sample = d3.range(10).map(d=>{
-                    return {
-                        time:d+1,
-                        value:Math.random()*100
-                    }
-                })
-
-                return sample
-
-            }
+            return
         }
 
+
+        /*开始作图*/
+        d3.select('.metrics-bar-container').selectAll('*').remove()
+
+        let margin={left:25, right:10, top:10, bottom:20}
+
+        let widthSvg = 320, heightSvg = 220
+        let widthChart = 300-margin.left-margin.right, heightChart = 200-margin.top-margin.bottom
+
+        let svg = d3.select('.metrics-bar-container')
+            .append('svg')
+            .attr('width',widthSvg)
+            .attr('height',heightSvg)
+            .append('g')
+            .attr('transform',`translate(${margin.left},${margin.top})`)
+
+
+        /*绘制x轴*/
+        let x = d3.scaleLinear()
+            .domain([39600,48300])
+            .range([0,widthChart])
+        svg.append('g')
+            .style('font-size','0.8em')
+            .attr('transform', `translate(0,${heightChart})`)
+            .call(d3.axisBottom(x).tickValues([39600, 45000, 48300]))
+
+        /*绘制annotation用来标记instance生成的时间*/
+        svg.append('g')
+            .attr('class','start-annotation')
+            .attr('transform', `translate(0,${heightChart})`)
+            .call(d3.axisBottom(x).tickValues(start_time_arr).tickSize(-200).tickFormat(''))
+
+        svg.append('g')
+            .attr('class','end-annotation')
+            .attr('transform', `translate(0,${heightChart})`)
+            .call(d3.axisBottom(x).tickValues(end_time_arr).tickSize(-200).tickFormat(''))
+
+        /*绘制y轴*/
+        let y = d3.scaleLinear()
+            .domain([0,100])
+            .range([heightChart,0])
+        svg.append('g')
+            .style('font-size','0.5em')
+            .call(d3.axisLeft(y))
+
+        let sample = d3.range(10).map(d=>{
+            return {
+                time:d+1,
+                value:Math.random()*100
+            }
+        })
+        // console.log(sample)
+
+        /*绘制曲线Line*/
+        svg.selectAll(".line")
+            .data(Object.values(data))
+            .enter()
+            .append('path')
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 0.5)
+            .attr("d", function(d){
+                return d3.line()
+                    .x(function(d) { return x(+d.timestamp)})
+                    .y(function(d) { return y(+d[`util_${metric}`]) })
+                    .curve(d3.curveMonotoneX)//使连线平滑
+                    (d)
+                }
+            )
     }
 
 
+    /*构造生成数据的处理函数*/
+    handle_data_for_line_chart=(d)=>{
 
-    /*切换时戳触发*/
-    update_timestamp=()=>{
-        let timestamp = document.getElementById('select_timestamp').value
-        this.setState({
-            time: +timestamp
+        let time = this.state.time
+        let job_name = d.parent.data.data.name==='root'?d.data.data.name : d.data.data.parent
+        let node_arr = []//用来储存所有当前timstamp下该job下所有 的nodes
+
+        let _this = this
+
+
+        this.state.stratify.children.forEach(item=>{
+            if(item.id==job_name){
+                item.children.forEach(item_=>{
+                    item_.children.forEach(item__=>{
+                        node_arr.push(item__.id)
+                    })
+                })
+            }
         })
 
-        let promise = new Promise((resolve, reject)=>{
-            let width = 600, height = 600
-            let stratify
 
-            let _data = this.preprocess(this.state.raw_data)
-            let time_data = this.format(_data)
-            this.setState({
-                time_data: time_data
+        let arr;
+
+        axios.get("data/file_server_rdn25.csv")
+            .then((d)=>{
+                let data = {}
+                d3.csvParseRows(d.data, function(d){
+                    let key = `${d[1]}_${d[0]}`
+                    data[key] = {
+                        timestamp: +d[0] || 0,
+                        machineID: d[1] || 0,
+                        util_cpu: +d[2] || 0,
+                        util_mem: +d[3] || 0,
+                        util_disk: +d[4] || 0
+                    }
+                })
+
+                return data
+
+            })
+            .then(data=>{
+
+                let data_arr = {}
+
+                /*遍历data对象查找mechine_id所有的记录*/
+                node_arr.forEach(item=>{
+                    data_arr[item] = []
+                    for(let key in data){
+                        if(key.startsWith(item+'_')){
+                            data_arr[item].push(data[key])
+                        }
+                    }
+                })
+
+
+                _this.setState({
+                    line_chart_data:data_arr
+                })
             })
 
 
-            resolve()
+        /*Here*/
+
+
+/*        let sample = d3.range(10).map(d=>{
+            return {
+                time:10-d,
+                value:Math.random()*100
+            }
         })
 
-        promise.then(()=>{
-
-            this.draw(this.state.time_data)
-        })
+        return sample*/
 
     }
 
@@ -551,7 +745,7 @@ class Views extends Component {
         let width = 600, height = 600
         let stratify
         
-        axios.get('data/concat_rdn25.csv')
+        axios.get('data/concat_rdn25_.csv')
             .then(d=>{
                 this.setState({
                     raw_data: d.data
@@ -570,19 +764,29 @@ class Views extends Component {
     render() {
 
         let option;
-        option = d3.range(39600,48601,300).map(d=>{
-            return <option value={d} key={d}>{d}</option>
+        option = d3.range(39600,48301,300).map(d=>{
+            return <option value={d} key={d}>time: {d}</option>
         })
 
 
         return(
             <div className={'views'}>
+                <ul className="nav nav-tabs">
+                    <li className="nav-item">
+                        <a className="nav-link active" href="#">Hierarchy</a>
+                    </li>
+                    <li className="nav-item">
+                        <a className="nav-link" href="#">Statistics</a>
+                    </li>
+                </ul>
+
                 <div className="left">
                     <div className="jobs"></div>
-                    <select id="select_timestamp" defaultValue="45000" onChange={this.update_timestamp}>
+                    <select id="select_timestamp" defaultValue='39600' onChange={this.once_change_timestamp}>
                         {option}
                     </select>
                 </div>
+
                 <div className="right">
                     <div className="load-change">
                         <div id="load-change-container" style={{ width: 300, height: 300 }}></div>
@@ -593,6 +797,10 @@ class Views extends Component {
                             <option value="cpu">CPU util</option>
                             <option value="mem">Memory util</option>
                             <option value="disk">Disk util</option>
+                        </select>
+                        <select id="select_if_scope" defaultValue="global">
+                        <option value="global">Global</option>
+                        <option value="scope">Scope</option>
                         </select>
                     </div>
                 </div>
